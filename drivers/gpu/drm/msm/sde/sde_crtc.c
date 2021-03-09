@@ -2805,6 +2805,7 @@ int bl_to_alpha_dc(int brightness)
 	return alpha;
 }
 
+bool oneplus_dimlayer_hbm_enable;
 int oneplus_get_panel_brightness_to_alpha(void)
 {
 	struct dsi_display *display = get_main_display();
@@ -2954,6 +2955,7 @@ ssize_t oneplus_display_notify_dim(struct device *dev,
 		return count;
 
 	oneplus_dim_status = dim_status;
+	oneplus_dimlayer_hbm_enable = oneplus_dim_status != 0;
 	if (oneplus_dim_status == 1 && HBM_flag) {
 		pr_err("notify dim not commit");
 		return count;
@@ -5128,37 +5130,36 @@ static int sde_crtc_onscreenfinger_atomic_check(struct sde_crtc_state *cstate,
 	}
 
 	if (finger_type) {
-	if (aod_index >= 0) {
-		if (aod_mode == 1) {
-			SDE_ATRACE_BEGIN("aod_layer_qbt_hid");
-			pstates[aod_index].sde_pstate->property_values[PLANE_PROP_ALPHA].value = 0;
-			aod_index = -1;
-			SDE_ATRACE_END("aod_layer_qbt_hid");
-			}
-		}
-	return 0;
+	    if (aod_index >= 0) {
+		    if (aod_mode == 1) {
+			    SDE_ATRACE_BEGIN("aod_layer_qbt_hid");
+			    pstates[aod_index].sde_pstate->property_values[PLANE_PROP_ALPHA].value = 0;
+			    aod_index = -1;
+			    SDE_ATRACE_END("aod_layer_qbt_hid");
+			    }
+		    }
+	    return 0;
 	}
 
 	if ((fp_index >= 0 && dim_mode != 0) ||
 		(display->panel->aod_status == 1 && oneplus_aod_dc == 0)) {
 	op_dimlayer_bl = 0;
 	} else {
-	if (op_dimlayer_bl_enable && !op_dp_enable) {
-		if (display->panel->bl_config.bl_level != 0 &&
-			display->panel->bl_config.bl_level
-				< op_dimlayer_bl_alpha){
-			dim_backlight = 1;
-			op_dimlayer_bl = 1;
-		} else{
-			op_dimlayer_bl = 0;
-		}
-	} else{
-		op_dimlayer_bl = 0;
-	}
+	    if (op_dimlayer_bl_enable && !op_dp_enable) {
+		    if (display->panel->bl_config.bl_level != 0 &&
+			    display->panel->bl_config.bl_level
+				    < op_dimlayer_bl_alpha){
+			    dim_backlight = 1;
+			    op_dimlayer_bl = 1;
+		    } else{
+			    op_dimlayer_bl = 0;
+		    }
+	    } else{
+		    op_dimlayer_bl = 0;
+	    }
 	}
 
-	if (fp_index >= 0 || fppressed_index >= 0 ||
-		oneplus_force_screenfp || dim_backlight == 1) {
+	if (oneplus_dimlayer_hbm_enable || oneplus_force_screenfp || dim_backlight == 1) {
 		if (fp_index >= 0 && fppressed_index >= 0) {
 			if (pstates[fp_index].stage >=
 					pstates[fppressed_index].stage) {
@@ -5194,7 +5195,7 @@ static int sde_crtc_onscreenfinger_atomic_check(struct sde_crtc_state *cstate,
 			zpos++;
 		}
 
-		if (fp_index >= 0)
+		if (oneplus_dimlayer_hbm_enable)
 			cstate->fingerprint_mode = true;
 		else
 			cstate->fingerprint_mode = false;
@@ -5210,12 +5211,16 @@ static int sde_crtc_onscreenfinger_atomic_check(struct sde_crtc_state *cstate,
 			cstate->fingerprint_pressed = true;
 		else
 			cstate->fingerprint_pressed = false;
-	} else{
-	cstate->fingerprint_pressed = false;
-	cstate->fingerprint_mode = false;
-	}
-	if (fp_index < 0 && !dim_backlight)
+	} else {
 		cstate->fingerprint_dim_layer = NULL;
+		cstate->fingerprint_pressed = false;
+		cstate->fingerprint_mode = false;
+	}
+	if (fp_mode == 1 && !oneplus_dimlayer_hbm_enable) {
+		cstate->fingerprint_mode = true;
+		cstate->fingerprint_pressed = true;
+		return 0;
+	}
 	return 0;
 }
 
